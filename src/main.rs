@@ -82,6 +82,11 @@ fn main() {
                 .alias("all")
                 .about("List tasks"),
         )
+        .subcommand(
+            Command::new("install")
+                .about("Install into shell")
+                .arg(arg!([SHELL])),
+        )
         .subcommand(Command::new("clean").about("Clean all completed tasks"))
         .get_matches();
     match matches.subcommand() {
@@ -143,6 +148,29 @@ fn main() {
                 print_tasks(&mut db, false);
             }
         }
+        Some(("install", sub_matches)) => {
+            if cfg!(linux) {
+                let install = |path| {
+                    std::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(format!("echo \"please-rs\" >> {}", path))
+                        .output()
+                        .expect("failed to execute process");
+                };
+                if let Some(index) = sub_matches.get_one::<String>("INDEX") {
+                    match index.as_str() {
+                        "fish" => install("~/.config/fish/config.fish"),
+                        "bash" => install("~/.bashrc"),
+                        "zsh" => install("~/.zshrc"),
+                        _ => {
+                            println!("Must be fish, bash, or zsh!")
+                        }
+                    }
+                }
+            } else {
+                println!("Installing to shell is only supported on Linux!")
+            }
+        }
         Some(("clean", _)) => {
             let tasks = get_tasks(&db);
             let prior_len = tasks.len();
@@ -156,6 +184,9 @@ fn main() {
                 "Cleaned {} completed tasks!",
                 Paint::green(prior_len - cleaned_tasks.len())
             );
+            print_tasks(&mut db, false);
+        }
+        Some(("list", _)) => {
             print_tasks(&mut db, false);
         }
         _ => {

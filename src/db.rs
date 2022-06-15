@@ -22,7 +22,7 @@ pub(crate) fn get_weather(db: &mut PickleDb) -> Option<String> {
             .ok()?
             .into_string()
             .ok()?
-            .replace("\"", "");
+            .replace('"', "");
         db.set("weather-cached", &get)
             .expect("Failed to set cached weather");
         db.set("weather-timestamp", &timestamp_current)

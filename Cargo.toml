@@ -18,7 +18,7 @@ casual = "0.2"
 ureq = "2.4.0"
 
 [profile.release]
-strip = true
+# strip = true
 opt-level = "z"
 lto = true
 codegen-units = 1
