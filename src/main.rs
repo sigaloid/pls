@@ -174,7 +174,7 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool) {
                 greeting_gen,
                 time_greeting,
                 name,
-                time.format(&Rfc2822).unwrap_or(time.to_string())
+                time.format(&Rfc2822).unwrap_or_else(|_| time.to_string())
             )
         } else {
             format!("{}!", greeting_gen)
@@ -269,5 +269,5 @@ fn get_tasks(db: &PickleDb) -> Vec<Task> {
 }
 
 fn get_time() -> OffsetDateTime {
-    OffsetDateTime::now_local().unwrap_or(OffsetDateTime::now_utc())
+    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
 }
