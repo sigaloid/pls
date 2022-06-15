@@ -1006,7 +1006,7 @@ static QUOTES: [&str; 1000] = [
 pub(crate) fn get_quote(db: &mut PickleDb) -> String {
     if let Some(quote) = db.get::<usize>("quote") {
         match quote {
-            0..=999 => {
+            0..=998 => {
                 let new_quote = quote + 1;
                 let _ = db.set("quote", &new_quote);
                 QUOTES[new_quote].to_string()

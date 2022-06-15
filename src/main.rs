@@ -1,5 +1,3 @@
-use std::io::stdin;
-
 use clap::{arg, command, Command};
 use directories_next::ProjectDirs;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
@@ -29,18 +27,32 @@ fn main() {
         SerializationMethod::Json,
     );
     if !db.exists("name") {
-        println!("{}", Paint::blue("Hello! What can I call you?: "));
-        let mut buffer = String::new();
-        let stdin = stdin();
-        stdin.read_line(&mut buffer).expect("Failed to read line");
+        let name: String =
+            casual::prompt(Paint::blue("Hello! What can I call you?: ").to_string()).get();
+
         println!(
-            "Nice to meet you, {}! I'll write that down for you to remember.",
-            buffer.trim()
+            "{}",
+            Paint::green(format!(
+                "Nice to meet you, {}! I'll write that down and make sure I don't forget it.",
+                name
+            ))
         );
-        db.set("name", &buffer.trim())
+        db.set("name", &name)
             .expect("Failed to write name to database");
     }
-
+    if !db.exists("weather") {
+        let weather = casual::confirm(
+            Paint::blue("Would you like to display the weather based on your IP location each time you open the terminal?")
+                .to_string(),
+        );
+        db.set("weather", &weather)
+            .expect("Failed to write weather to database");
+        if casual::confirm(Paint::cyan("Would you like to specify a location?").to_string()) {
+            let city: String = casual::prompt(Paint::blue("Enter a city name: ").to_string()).get();
+            db.set("weather-city", &city)
+                .expect("Failed to write city to database");
+        }
+    }
     let matches = command!()
         .propagate_version(true)
         .subcommand_required(false)
@@ -185,6 +197,12 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool) {
         println!();
         println!("{}", Paint::green(full_greeting));
         println!();
+        if db.get::<bool>("weather").unwrap_or_default() {
+            if let Some(weather) = db::get_weather(db) {
+                println!("{}", Paint::blue(weather));
+                println!();
+            }
+        }
     }
     if let Some(tasks) = db.get::<Vec<Task>>("tasks") {
         let total_task_count = tasks.len();
@@ -268,6 +286,6 @@ fn get_tasks(db: &PickleDb) -> Vec<Task> {
     db.get::<Vec<Task>>("tasks").unwrap_or_default()
 }
 
-fn get_time() -> OffsetDateTime {
+pub(crate) fn get_time() -> OffsetDateTime {
     OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
 }
