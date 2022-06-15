@@ -12,7 +12,6 @@ pub(crate) fn create_dir() {
         }
     }
 }
-
 pub(crate) fn get_weather(db: &mut PickleDb) -> Option<String> {
     let timestamp_current = get_time().unix_timestamp();
     let cache_weather = |db: &mut PickleDb| -> Option<String> {
