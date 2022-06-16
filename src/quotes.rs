@@ -1003,22 +1003,19 @@ static QUOTES: [&str; 1000] = [
     "Don't wait. The time will never be just right. ~ Napoleon Hill"
 ];
 
-pub(crate) fn get_quote(db: &mut PickleDb) -> String {
+pub fn get_quote(db: &mut PickleDb) -> String {
     if let Some(quote) = db.get::<usize>("quote") {
-        match quote {
-            0..=998 => {
-                let new_quote = quote + 1;
-                let _ = db.set("quote", &new_quote);
-                QUOTES[new_quote].to_string()
-            }
-            _ => {
-                let new_quote = 0;
-                let _ = db.set("quote", &new_quote);
-                QUOTES[new_quote].to_string()
-            }
+        if let 0..=998 = quote {
+            let new_quote = quote + 1;
+            let _set = db.set("quote", &new_quote);
+            QUOTES[new_quote].to_string()
+        } else {
+            let new_quote = 0;
+            let _set = db.set("quote", &new_quote);
+            QUOTES[new_quote].to_string()
         }
     } else {
-        let _ = db.set("quote", &0);
+        let _set = db.set("quote", &0);
         QUOTES[0].to_string()
     }
 }

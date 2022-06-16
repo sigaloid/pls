@@ -1,4 +1,31 @@
-use clap::{arg, command, Command};
+#![deny(
+    anonymous_parameters,
+    clippy::all,
+    const_err,
+    illegal_floating_point_literal_pattern,
+    late_bound_lifetime_arguments,
+    path_statements,
+    patterns_in_fns_without_body,
+    rust_2018_idioms,
+    trivial_numeric_casts,
+    unused_extern_crates
+)]
+#![warn(
+    clippy::dbg_macro,
+    clippy::decimal_literal_representation,
+    clippy::get_unwrap,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::use_debug,
+    clippy::all,
+    unused_qualifications,
+    variant_size_differences
+)]
+use std::fs::DirBuilder;
+
+use clap::{arg, command, ArgAction, Command};
 use directories_next::ProjectDirs;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use serde::{Deserialize, Serialize};
@@ -11,11 +38,10 @@ use term_table::{
 
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
 use yansi::Paint;
-mod db;
 mod quotes;
 
 fn main() {
-    db::create_dir();
+    create_dir();
     let path = ProjectDirs::from("com", "sigaloid", "please-rs")
         .expect("Failed to create ProjectDirs!")
         .config_dir()
@@ -88,7 +114,14 @@ fn main() {
                 .arg(arg!([SHELL])),
         )
         .subcommand(Command::new("clean").about("Clean all completed tasks"))
+        .arg(
+            arg!(
+                -r --refresh "Force refresh of weather"
+            )
+            .action(ArgAction::SetTrue),
+        )
         .get_matches();
+    let force_refresh = *matches.get_one::<bool>("refresh").unwrap_or(&false);
     match matches.subcommand() {
         Some(("add", sub_matches)) => {
             if let Some(name) = sub_matches.get_one::<String>("NAME") {
@@ -96,22 +129,20 @@ fn main() {
                 let mut tasks = get_tasks(&db);
                 tasks.push(Task::new(name));
                 db.set("tasks", &tasks).expect("Failed to set tasks");
-                print_tasks(&mut db, false);
+                print_tasks(&mut db, false, force_refresh);
             }
         }
         Some(("do", sub_matches)) => {
             if let Some(index) = sub_matches.get_one::<String>("INDEX") {
                 let mut index = index.parse::<usize>().unwrap_or(0);
-                if index != 0 {
-                    index -= 1;
-                }
+                index = index.saturating_sub(1);
                 println!("Marking task {} from list as done...", Paint::yellow(index));
                 let mut tasks = get_tasks(&db);
                 match tasks.get_mut(index) {
                     Some(task_mut) => {
                         let mut task = task_mut.clone();
                         task.completed = true;
-                        let _ = std::mem::replace(&mut tasks[index], task);
+                        let _replace = std::mem::replace(&mut tasks[index], task);
                     }
                     None => println!(
                         "{}",
@@ -122,15 +153,14 @@ fn main() {
                 }
                 // task.done = true;
                 db.set("tasks", &tasks).expect("Failed to set tasks");
-                print_tasks(&mut db, false);
+                print_tasks(&mut db, false, force_refresh);
             }
         }
         Some(("rm", sub_matches)) => {
             if let Some(index) = sub_matches.get_one::<String>("INDEX") {
                 let mut index = index.parse::<usize>().unwrap_or(0);
-                if index != 0 {
-                    index -= 1;
-                }
+                index = index.saturating_sub(1);
+
                 println!("Marking task {} from list as done...", Paint::yellow(index));
                 let mut tasks = get_tasks(&db);
                 if tasks.get(index).is_some() {
@@ -141,11 +171,11 @@ fn main() {
                         Paint::red(
                             "Error: task not found. Are you sure a task exists with that number?"
                         )
-                    )
+                    );
                 }
 
                 db.set("tasks", &tasks).expect("Failed to set tasks");
-                print_tasks(&mut db, false);
+                print_tasks(&mut db, false, force_refresh);
             }
         }
         Some(("install", sub_matches)) => {
@@ -163,12 +193,12 @@ fn main() {
                         "bash" => install("~/.bashrc"),
                         "zsh" => install("~/.zshrc"),
                         _ => {
-                            println!("Must be fish, bash, or zsh!")
+                            println!("Must be fish, bash, or zsh!");
                         }
                     }
                 }
             } else {
-                println!("Installing to shell is only supported on Linux!")
+                println!("Installing to shell is only supported on Linux!");
             }
         }
         Some(("clean", _)) => {
@@ -184,18 +214,18 @@ fn main() {
                 "Cleaned {} completed tasks!",
                 Paint::green(prior_len - cleaned_tasks.len())
             );
-            print_tasks(&mut db, false);
+            print_tasks(&mut db, false, force_refresh);
         }
         Some(("list", _)) => {
-            print_tasks(&mut db, false);
+            print_tasks(&mut db, false, force_refresh);
         }
         _ => {
-            print_tasks(&mut db, true);
+            print_tasks(&mut db, true, force_refresh);
         }
     }
 }
 
-fn print_tasks(db: &mut PickleDb, full_greet: bool) {
+fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
     println!();
     let mut table = term_table::Table::new();
     table.style = TableStyle::extended();
@@ -211,17 +241,18 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool) {
 
         let greeting_gen = TextGenerator::new()
             .generate("{Hello|Howdy|Greetings|What's up|Salutations|Greetings}");
-        let full_greeting = if let Some(name) = db.get::<String>("name") {
-            format!(
-                "{}, {} {}! It is {}",
-                greeting_gen,
-                time_greeting,
-                name,
-                time.format(&Rfc2822).unwrap_or_else(|_| time.to_string())
-            )
-        } else {
-            format!("{}!", greeting_gen)
-        };
+        let full_greeting = db.get::<String>("name").map_or_else(
+            || format!("{}!", greeting_gen),
+            |name| {
+                format!(
+                    "{}, {} {}! It is {}",
+                    greeting_gen,
+                    time_greeting,
+                    name,
+                    time.format(&Rfc2822).unwrap_or_else(|_| time.to_string())
+                )
+            },
+        );
 
         let quote = quotes::get_quote(db);
         println!("{}", Paint::yellow(quote));
@@ -229,65 +260,76 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool) {
         println!("{}", Paint::green(full_greeting));
         println!();
         if db.get::<bool>("weather").unwrap_or_default() {
-            if let Some(weather) = db::get_weather(db) {
-                println!("{}", Paint::blue(weather));
-                println!();
-            }
+            get_weather(db, force_refresh).map_or_else(
+                || println!("{}", Paint::red("Failed to fetch weather :(")),
+                |weather| {
+                    println!("{}", Paint::blue(weather));
+                    println!();
+                },
+            );
         }
     }
-    if let Some(tasks) = db.get::<Vec<Task>>("tasks") {
-        let total_task_count = tasks.len();
-        let task_todo_count = tasks.iter().filter(|t| !t.completed).count();
-        let task_completed_count = tasks.iter().filter(|t| t.completed).count();
-        let mut vec = vec![];
-        if total_task_count != 0 {
-            vec.push(TableCell::new(""));
-        }
-        vec.extend(vec![TableCell::new_with_alignment(
-            format!(
-                "You have {} pending tasks and {} completed tasks!",
-                Paint::red(task_todo_count),
-                Paint::green(task_completed_count)
-            ),
-            2,
-            Alignment::Center,
-        )]);
-        table.add_row(Row::new(vec));
-        if total_task_count != 0 {
-            table.add_row(Row::new(vec![
-                TableCell::new_with_alignment(
-                    Paint::green("#").bold().italic(),
-                    1,
-                    Alignment::Center,
-                ),
-                TableCell::new_with_alignment(
-                    Paint::green("Title").bold().italic(),
-                    1,
-                    Alignment::Center,
-                ),
-                TableCell::new_with_alignment(
-                    Paint::yellow("Completed").bold().italic(),
-                    1,
-                    Alignment::Center,
-                ),
-            ]));
-            for (i, task) in tasks.iter().enumerate() {
-                table.add_row(Row::new(vec![
-                    TableCell::new_with_alignment(Paint::green(i + 1), 1, Alignment::Center),
-                    TableCell::new_with_alignment(Paint::green(&task.title), 1, Alignment::Center),
-                    TableCell::new_with_alignment(func(task.completed), 1, Alignment::Center),
-                ]));
+
+    db.get::<Vec<Task>>("tasks").map_or_else(
+        || {
+            println!("{}", Paint::green("No tasks!"));
+        },
+        |tasks| {
+            let total_task_count = tasks.len();
+            let task_todo_count = tasks.iter().filter(|t| !t.completed).count();
+            let task_completed_count = tasks.iter().filter(|t| t.completed).count();
+            let mut vec = vec![];
+            if total_task_count != 0 {
+                vec.push(TableCell::new(""));
             }
-        } else {
-            table.add_row(Row::new(vec![TableCell::new_with_alignment(
-                Paint::green("Congrats! You are up to date!"),
+            vec.extend(vec![TableCell::new_with_alignment(
+                format!(
+                    "You have {} pending tasks and {} completed tasks!",
+                    Paint::red(task_todo_count),
+                    Paint::green(task_completed_count)
+                ),
                 2,
                 Alignment::Center,
-            )]));
-        }
-    } else {
-        println!("{}", Paint::green("No tasks!"));
-    }
+            )]);
+            table.add_row(Row::new(vec));
+            if total_task_count == 0 {
+                table.add_row(Row::new(vec![TableCell::new_with_alignment(
+                    Paint::green("Congrats! You are up to date!"),
+                    2,
+                    Alignment::Center,
+                )]));
+            } else {
+                table.add_row(Row::new(vec![
+                    TableCell::new_with_alignment(
+                        Paint::green("#").bold().italic(),
+                        1,
+                        Alignment::Center,
+                    ),
+                    TableCell::new_with_alignment(
+                        Paint::green("Title").bold().italic(),
+                        1,
+                        Alignment::Center,
+                    ),
+                    TableCell::new_with_alignment(
+                        Paint::yellow("Status").bold().italic(),
+                        1,
+                        Alignment::Center,
+                    ),
+                ]));
+                for (i, task) in tasks.iter().enumerate() {
+                    table.add_row(Row::new(vec![
+                        TableCell::new_with_alignment(Paint::green(i + 1), 1, Alignment::Center),
+                        TableCell::new_with_alignment(
+                            Paint::green(&task.title),
+                            1,
+                            Alignment::Center,
+                        ),
+                        TableCell::new_with_alignment(func(task.completed), 1, Alignment::Center),
+                    ]));
+                }
+            }
+        },
+    );
     println!("{}", table.render());
 }
 
@@ -317,6 +359,40 @@ fn get_tasks(db: &PickleDb) -> Vec<Task> {
     db.get::<Vec<Task>>("tasks").unwrap_or_default()
 }
 
+fn create_dir() {
+    if let Some(dir) = ProjectDirs::from("com", "sigaloid", "please-rs") {
+        let cfg_dir = dir.config_dir();
+        if !cfg_dir.exists() {
+            DirBuilder::new().recursive(true).create(cfg_dir).ok();
+        }
+    }
+}
+fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
+    let timestamp_current = get_time().unix_timestamp();
+    let cache_weather = |db: &mut PickleDb| -> Option<String> {
+        let city = db.get::<String>("weather-city").unwrap_or_default();
+        let get = ureq::get(&format!("https://wttr.in/{}?format=\"%l:+%C+%c+%t\"", city))
+            .call()
+            .unwrap()
+            .into_string()
+            .ok()?
+            .replace('"', "");
+        db.set("weather-cached", &get)
+            .expect("Failed to set cached weather");
+        db.set("weather-timestamp", &timestamp_current)
+            .expect("Failed to set cached weather");
+        Some(get)
+    };
+    if let Some(timestamp) = db.get::<i64>("weather-timestamp") {
+        if timestamp_current - timestamp > 3600 || !db.exists("weather-cached") || force_refresh {
+            cache_weather(db)
+        } else {
+            db.get::<String>("weather-cached")
+        }
+    } else {
+        cache_weather(db)
+    }
+}
 pub(crate) fn get_time() -> OffsetDateTime {
     OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc())
 }
