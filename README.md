@@ -2,6 +2,7 @@
 
 Pls (short for please) is a console-based to-do list, that greets you with the weather, an inspirational quote, and any tasks you must complete. It is inspired by [please](https://github.com/NayamAmarshe/please), which is written in Python.
 
+![](images/2022-07-04_14-34.png)
 # Installation 
 
 You can install `pls` by running: 
