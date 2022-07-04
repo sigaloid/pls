@@ -46,10 +46,10 @@ fn main() {
     // create config directory
     create_dir();
     // create path to config file
-    let path = ProjectDirs::from("com", "sigaloid", "please")
+    let path = ProjectDirs::from("com", "sigaloid", "pls")
         .expect("Failed to create ProjectDirs!")
         .config_dir()
-        .join("please.json");
+        .join("pls.json");
     // create database
     let mut db = PickleDb::load_or_new(
         path,
@@ -89,7 +89,7 @@ fn main() {
                 .expect("Failed to write city to database");
         }
     }
-    let matches = clap::Command::new("please").version("0.1.0")
+    let matches = clap::Command::new("pls").version("0.1.0")
         .propagate_version(true)
         .subcommand_required(false)
         .arg_required_else_help(false)
@@ -289,16 +289,16 @@ fn main() {
                         println!(
                             "Seems like the command was successful. {}",
                             if shell_install {
-                                "If not, you can manually add 'please' to your bashrc, zshrc, or fishrc."
+                                "If not, you can manually add 'pls' to your bashrc, zshrc, or fishrc."
                             } else {
-                                "If not, you can manually add background weather refresh to your crontab by running 'crontab -e' in a terminal and adding '0 * * * * please -r'"
+                                "If not, you can manually add background weather refresh to your crontab by running 'crontab -e' in a terminal and adding '0 * * * * pls -r'"
                             }
                         );
                     }
                     println!("Successfully ran command");
                 };
-                let install = |path| command(&format!("echo \"please\" >> {}", path), true);
-                // if shell is specified, attempt to add "please" to the *rc so that please runs automatically on every shell start.
+                let install = |path| command(&format!("echo \"pls\" >> {}", path), true);
+                // if shell is specified, attempt to add "pls" to the *rc so that pls runs automatically on every shell start.
                 if let Some(index) = sub_matches.get_one::<String>("SHELL") {
                     match index.as_str() {
                         "fish" => install("~/.config/fish/config.fish"),
@@ -307,7 +307,7 @@ fn main() {
                         // if user specified weather, add a weather refresh to the crontab so that it refreshes the weather 
                         // every 60 minutes and on boot. this ensures that the user never waits for their terminal.
                         "weather" => command(
-                            "crontab -l | { cat; echo \"0 * * * * please -r\"; echo \"@reboot please -r\"; } | sort | uniq | crontab -",false
+                            "crontab -l | { cat; echo \"0 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort | uniq | crontab -",false
                         ),
                         _ => println!("Must be fish, bash, zsh, or weather (to install the weather background update service)!"),
                     }
@@ -420,7 +420,7 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
         table.add_row(Row::new(vec![
             TableCell::new_with_alignment(Paint::green("#").bold().italic(), 1, Alignment::Center),
             TableCell::new_with_alignment(
-                Paint::green("Title").bold().italic(),
+                Paint::yellow("Title").bold().italic(),
                 1,
                 Alignment::Center,
             ),
@@ -470,7 +470,7 @@ fn get_tasks(db: &PickleDb) -> Vec<Task> {
 }
 
 fn create_dir() {
-    if let Some(dir) = ProjectDirs::from("com", "sigaloid", "please") {
+    if let Some(dir) = ProjectDirs::from("com", "sigaloid", "pls") {
         let cfg_dir = dir.config_dir();
         if !cfg_dir.exists() {
             DirBuilder::new().recursive(true).create(cfg_dir).ok();
@@ -502,7 +502,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             // if refresh isn't forced, but it is outdated or a cache doesn't exist,
             // spawn new process to update in the background, so that the terminal isn't blocked by a weather update
             drop(
-                std::process::Command::new("please")
+                std::process::Command::new("pls")
                     .arg("-r")
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())

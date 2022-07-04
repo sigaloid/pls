@@ -291,7 +291,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "please"
+name = "pls"
 version = "0.1.0"
 dependencies = [
  "casual",
