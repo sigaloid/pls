@@ -12,30 +12,38 @@ cargo install --git https://github.com/sigaloid/pls
 
 # Usage 
 
-```
+```bash
 # Show time, quotes and tasks
 pls
 
 # Add a task
 pls add "TASK NAME"
 
-# Delete a task
+# Delete a task (any of these work)
 pls delete <TASK NUMBER>
 pls del <TASK NUMBER>
 pls remove <TASK NUMBER>
 pls rm <TASK NUMBER>
 
-# Mark task as done
+# Mark task as done (either of these work)
 pls done <TASK NUMBER>
 pls do <TASK NUMBER>
 
-# Mark task as undone
+# Mark task as undone (either of these work)
 pls undone <TASK NUMBER>
 pls undo <TASK NUMBER>
 
-# Show tasks even if all tasks are markded as done
+# Show tasks even if all tasks are marked as done (either of these work)
 pls list
 pls ls
+
+# Install pls into shell so it launches whenever your shell does
+pls install {bash,zsh,fish}
+
+# Install crontab task that refreshes weather in the background
+pls install weather
+# OR
+crontab -l | { cat; echo \"0 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort | uniq | crontab -
 ```
 [![asciicast](https://asciinema.org/a/tq38FG5yP6AIZGymjc4LCe2jF.svg)](https://asciinema.org/a/tq38FG5yP6AIZGymjc4LCe2jF)
 ![](images/2022-07-04_14-32.png)
@@ -47,7 +55,15 @@ To see what that looks like, click here: https://wttr.in/?format=%l:+%C+%c+%t
 Alternatively, if the geolocation is not accurate, you can manually specify a city. For example, if you live in New York, visit https://wttr.in/new-york and verify that the coordinates are correct (some smaller cities may not exist in wttr.in's database). If the coordinates are correct, answer yes to "Would you like to save a more specific location (your exact city)?".
 
 ---
-The weather is cached for one hour by default. After the cached weather data is expired, if you launch pls, by default it will *not* block the process to load the weather (unless -r is specified). It launches a background process to load the weather data and save it for the next time it is launched. This is to avoid ever having a bottleneck with the terminal never loading a shell because the internet is down, for example. This means if you launch the terminal rarely, the weather data may be out of date. If you want to force it to block on loading the weather data, launch pls with the -r/--refresh flag set.
+The weather is cached for one hour by default. After the cached weather data is expired, if you launch pls, by default it will *not* block the process to load the weather (unless -r is specified). It launches a background process to load the weather data and save it for the next time it is launched. This is to avoid ever having a bottleneck with the terminal never loading a shell because the internet is down, for example. This means if you launch the terminal rarely, the weather data may be out of date the first time. If you want to force it to block on loading the weather data, launch pls with the -r/--refresh flag set.
+
+---
+In addition to the built-in background refreshing of the weather, you can enable a crontab background task to refresh the weather data automatically every hour and on boot, so that when you open the terminal, the data is up-to-date the first time. 
+```bash
+pls install weather
+# OR
+crontab -l | { cat; echo \"0 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort | uniq | crontab -
+```
 
 # Benchmark
 
