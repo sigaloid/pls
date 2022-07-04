@@ -46,6 +46,7 @@ pls install weather
 crontab -l | { cat; echo \"0 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort | uniq | crontab -
 ```
 [![asciicast](https://asciinema.org/a/tq38FG5yP6AIZGymjc4LCe2jF.svg)](https://asciinema.org/a/tq38FG5yP6AIZGymjc4LCe2jF)
+PS: This asciinema cast shows the chart out of alignment on the right side, but as can be seen in the image below, the chart looks normal within the terminal.
 ![](images/2022-07-04_14-32.png)
 
 # Weather information
