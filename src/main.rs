@@ -27,7 +27,7 @@
 #![allow(clippy::too_many_lines)]
 use std::{fs::DirBuilder, process::Stdio, str::from_utf8};
 
-use clap::{arg, command, ArgAction, Command};
+use clap::{arg, ArgAction, Command};
 use directories_next::ProjectDirs;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use serde::{Deserialize, Serialize};
@@ -89,7 +89,7 @@ fn main() {
                 .expect("Failed to write city to database");
         }
     }
-    let matches = command!()
+    let matches = clap::Command::new("please").version("0.1.0")
         .propagate_version(true)
         .subcommand_required(false)
         .arg_required_else_help(false)
@@ -358,10 +358,17 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
         let greeting_gen = TextGenerator::new()
             .generate("{Hello|Howdy|Greetings|What's up|Salutations|Greetings}");
         let full_greeting = db.get::<String>("name").map_or_else(
-            || format!("{}!", greeting_gen),
+            || {
+                format!(
+                    "{}, {}! It is {}",
+                    greeting_gen,
+                    time_greeting,
+                    time.format(&Rfc2822).unwrap_or_else(|_| time.to_string())
+                )
+            },
             |name| {
                 format!(
-                    "{}, {} {}! It is {}",
+                    "{}, {}, {}! It is {}",
                     greeting_gen,
                     time_greeting,
                     name,
