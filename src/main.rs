@@ -105,7 +105,7 @@ fn main() {
                 .arg(arg!([INDEX])),
         )
         .subcommand(
-            Command::new("undo")
+            Command::new("undo").alias("undone")
                 .about("Mark task as undone")
                 .arg(arg!([INDEX])),
         )
