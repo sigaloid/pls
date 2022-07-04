@@ -23,7 +23,9 @@
     unused_qualifications,
     variant_size_differences
 )]
-use std::fs::DirBuilder;
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::too_many_lines)]
+use std::{fs::DirBuilder, process::Stdio, str::from_utf8};
 
 use clap::{arg, command, ArgAction, Command};
 use directories_next::ProjectDirs;
@@ -41,21 +43,24 @@ use yansi::Paint;
 mod quotes;
 
 fn main() {
+    // create config directory
     create_dir();
-    let path = ProjectDirs::from("com", "sigaloid", "please-rs")
+    // create path to config file
+    let path = ProjectDirs::from("com", "sigaloid", "please")
         .expect("Failed to create ProjectDirs!")
         .config_dir()
         .join("please.json");
-
+    // create database
     let mut db = PickleDb::load_or_new(
         path,
         PickleDbDumpPolicy::AutoDump,
         SerializationMethod::Json,
     );
+
+    // if name has not been set, ask for name and save it
     if !db.exists("name") {
         let name: String =
             casual::prompt(Paint::blue("Hello! What can I call you?: ").to_string()).get();
-
         println!(
             "{}",
             Paint::green(format!(
@@ -66,6 +71,8 @@ fn main() {
         db.set("name", &name)
             .expect("Failed to write name to database");
     }
+
+    // if weather has not been set, ask whether to display it.
     if !db.exists("weather") {
         let weather = casual::confirm(
             Paint::blue("Would you like to display the weather based on your IP location each time you open the terminal?")
@@ -95,11 +102,16 @@ fn main() {
                 .arg(arg!([INDEX])),
         )
         .subcommand(
+            Command::new("undo")
+                .about("Mark task as undone")
+                .arg(arg!([INDEX])),
+        )
+        .subcommand(
             Command::new("rm")
                 .alias("remove")
                 .alias("del")
                 .alias("delete")
-                .about("Mark task as done")
+                .about("Remove task")
                 .arg(arg!([INDEX])),
         )
         .subcommand(
@@ -110,7 +122,8 @@ fn main() {
         )
         .subcommand(
             Command::new("install")
-                .about("Install into shell")
+                .about("Install into shell. \"fish\", \"bash\", or \"zsh\" as options are supported. 
+                Alternatively, enter \"weather\" as an option to install a crontab service to automatically update the weather in the background.")
                 .arg(arg!([SHELL])),
         )
         .subcommand(Command::new("clean").about("Clean all completed tasks"))
@@ -119,13 +132,21 @@ fn main() {
                 -r --refresh "Force refresh of weather"
             )
             .action(ArgAction::SetTrue),
+        ).arg(
+            arg!(
+                -a --all "Apply change to all tasks"
+              )
+            .action(ArgAction::SetTrue),
         )
         .get_matches();
+    let all = *matches.get_one::<bool>("all").unwrap_or(&false);
     let force_refresh = *matches.get_one::<bool>("refresh").unwrap_or(&false);
     match matches.subcommand() {
         Some(("add", sub_matches)) => {
+            // if name of task is set, add task to list
             if let Some(name) = sub_matches.get_one::<String>("NAME") {
                 println!("Adding task {} to list...", Paint::yellow(name));
+                // get copy of tasks, add new task, and save to database
                 let mut tasks = get_tasks(&db);
                 tasks.push(Task::new(name));
                 db.set("tasks", &tasks).expect("Failed to set tasks");
@@ -133,10 +154,36 @@ fn main() {
             }
         }
         Some(("do", sub_matches)) => {
-            if let Some(index) = sub_matches.get_one::<String>("INDEX") {
-                let mut index = index.parse::<usize>().unwrap_or(0);
-                index = index.saturating_sub(1);
-                println!("Marking task {} from list as done...", Paint::yellow(index));
+            // use specified index or default to first
+            if all {
+                println!("{}", Paint::red("Marking all tasks as done..."));
+                // get copy of tasks, mark as completed, replace task in task list
+                let tasks = get_tasks(&db);
+                let mut new_tasks = Vec::new();
+                for task in tasks {
+                    let mut new_task = task.clone();
+                    new_task.completed = true;
+                    new_tasks.push(new_task);
+                }
+                // save task list to database
+                db.set("tasks", &new_tasks).expect("Failed to set tasks");
+            } else {
+                let index = sub_matches
+                    .get_one::<String>("INDEX")
+                    .map_or_else(
+                        || {
+                            println!("No index specified! Defaulting to first item...");
+                            0
+                        },
+                        |index| index.parse::<usize>().unwrap_or(0),
+                    )
+                    .saturating_sub(1);
+
+                println!(
+                    "Marking task {} from list as done...",
+                    Paint::yellow(index + 1)
+                );
+                // get copy of tasks, mark as completed, replace task in task list
                 let mut tasks = get_tasks(&db);
                 match tasks.get_mut(index) {
                     Some(task_mut) => {
@@ -151,17 +198,80 @@ fn main() {
                         )
                     ),
                 }
-                // task.done = true;
+                // save task list to database
                 db.set("tasks", &tasks).expect("Failed to set tasks");
-                print_tasks(&mut db, false, force_refresh);
             }
+            print_tasks(&mut db, false, force_refresh);
+        }
+        Some(("undo", sub_matches)) => {
+            if all {
+                println!("{}", Paint::red("Marking all tasks as undone..."));
+                // get copy of tasks, mark as uncompleted, replace task in task list
+                let tasks = get_tasks(&db);
+                let mut new_tasks = Vec::new();
+                for task in tasks {
+                    let mut new_task = task.clone();
+                    new_task.completed = false;
+                    new_tasks.push(new_task);
+                }
+                // save task list to database
+                db.set("tasks", &new_tasks).expect("Failed to set tasks");
+            } else {
+                // use specified index or default to first
+                let index = sub_matches
+                    .get_one::<String>("INDEX")
+                    .map_or_else(
+                        || {
+                            println!("No index specified! Defaulting to first item...");
+                            0
+                        },
+                        |index| index.parse::<usize>().unwrap_or(0),
+                    )
+                    .saturating_sub(1);
+
+                println!(
+                    "Marking task {} from list as undone...",
+                    Paint::yellow(index + 1)
+                );
+                // get copy of tasks, mark as uncompleted, replace task in task list
+                let mut tasks = get_tasks(&db);
+                match tasks.get_mut(index) {
+                    Some(task_mut) => {
+                        let mut task = task_mut.clone();
+                        task.completed = false;
+                        let _replace = std::mem::replace(&mut tasks[index], task);
+                    }
+                    None => println!(
+                        "{}",
+                        Paint::red(
+                            "Error: task not found. Are you sure a task exists with that number?"
+                        )
+                    ),
+                }
+                // save task list to database
+                db.set("tasks", &tasks).expect("Failed to set tasks");
+            }
+            print_tasks(&mut db, false, force_refresh);
         }
         Some(("rm", sub_matches)) => {
-            if let Some(index) = sub_matches.get_one::<String>("INDEX") {
-                let mut index = index.parse::<usize>().unwrap_or(0);
-                index = index.saturating_sub(1);
+            if all {
+                println!("{}", Paint::red("Removing all tasks..."));
+                db.rem("tasks").expect("Failed to remove tasks");
+            } else {
+                // use specified index or default to first
+                let index = sub_matches
+                    .get_one::<String>("INDEX")
+                    .map_or_else(
+                        || {
+                            println!("No index specified! Defaulting to first item...");
+                            0
+                        },
+                        |index| index.parse::<usize>().unwrap_or(0),
+                    )
+                    .saturating_sub(1);
 
-                println!("Marking task {} from list as done...", Paint::yellow(index));
+                println!("Removing task {}...", Paint::yellow(index + 1));
+                // get copy of tasks, delete from list
                 let mut tasks = get_tasks(&db);
                 if tasks.get(index).is_some() {
                     tasks.remove(index);
@@ -173,28 +283,48 @@ fn main() {
                         )
                     );
                 }
-
+                // save task list to database
                 db.set("tasks", &tasks).expect("Failed to set tasks");
-                print_tasks(&mut db, false, force_refresh);
             }
+            print_tasks(&mut db, false, force_refresh);
         }
         Some(("install", sub_matches)) => {
-            if cfg!(linux) {
-                let install = |path| {
-                    std::process::Command::new("sh")
+            if cfg!(unix) {
+                let command = |cmd: &str, shell_install: bool| {
+                    println!("Now running command: {}", cmd);
+                    let output = std::process::Command::new("sh")
                         .arg("-c")
-                        .arg(format!("echo \"please-rs\" >> {}", path))
+                        .arg(cmd)
                         .output()
                         .expect("failed to execute process");
+
+                    println!("{}", from_utf8(&output.stdout).unwrap_or_default());
+
+                    if output.status.success() {
+                        println!(
+                            "Seems like the command was successful. {}",
+                            if shell_install {
+                                "If not, you can manually add 'please' to your bashrc, zshrc, or fishrc."
+                            } else {
+                                "If not, you can manually add background weather refresh to your crontab by running 'crontab -e' in a terminal and adding '0 * * * * please -r'"
+                            }
+                        );
+                    }
+                    println!("Successfully ran command");
                 };
-                if let Some(index) = sub_matches.get_one::<String>("INDEX") {
+                let install = |path| command(&format!("echo \"please\" >> {}", path), true);
+                // if shell is specified, attempt to add "please" to the *rc so that please runs automatically on every shell start.
+                if let Some(index) = sub_matches.get_one::<String>("SHELL") {
                     match index.as_str() {
                         "fish" => install("~/.config/fish/config.fish"),
                         "bash" => install("~/.bashrc"),
                         "zsh" => install("~/.zshrc"),
-                        _ => {
-                            println!("Must be fish, bash, or zsh!");
-                        }
+                        // if user specified weather, add a weather refresh to the crontab so that it refreshes the weather 
+                        // every 60 minutes and on boot. this ensures that the user never waits for their terminal.
+                        "weather" => command(
+                            "crontab -l | { cat; echo \"0 * * * * please -r\"; echo \"@reboot please -r\"; } | sort | uniq | crontab -",false
+                        ),
+                        _ => println!("Must be fish, bash, zsh, or weather (to install the weather background update service)!"),
                     }
                 }
             } else {
@@ -202,6 +332,7 @@ fn main() {
             }
         }
         Some(("clean", _)) => {
+            println!("{}", Paint::blue("Clearing all completed tasks"));
             let tasks = get_tasks(&db);
             let prior_len = tasks.len();
             let cleaned_tasks = tasks
@@ -269,67 +400,61 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
             );
         }
     }
-
-    db.get::<Vec<Task>>("tasks").map_or_else(
-        || {
-            println!("{}", Paint::green("No tasks!"));
-        },
-        |tasks| {
-            let total_task_count = tasks.len();
-            let task_todo_count = tasks.iter().filter(|t| !t.completed).count();
-            let task_completed_count = tasks.iter().filter(|t| t.completed).count();
-            let mut vec = vec![];
-            if total_task_count != 0 {
-                vec.push(TableCell::new(""));
-            }
-            vec.extend(vec![TableCell::new_with_alignment(
-                format!(
-                    "You have {} pending tasks and {} completed tasks!",
-                    Paint::red(task_todo_count),
-                    Paint::green(task_completed_count)
-                ),
-                2,
+    let tasks = get_tasks(db);
+    let total_task_count = tasks.len();
+    let task_pending_count = tasks.iter().filter(|t| !t.completed).count();
+    let task_completed_count = tasks.iter().filter(|t| t.completed).count();
+    let mut vec = vec![];
+    if total_task_count != 0 {
+        vec.push(TableCell::new(""));
+    }
+    vec.extend(vec![TableCell::new_with_alignment(
+        format!(
+            "You have {} pending tasks and {} completed tasks!",
+            Paint::red(task_pending_count),
+            Paint::green(task_completed_count)
+        ),
+        2,
+        Alignment::Center,
+    )]);
+    table.add_row(Row::new(vec));
+    if total_task_count == 0 {
+        table.add_row(Row::new(vec![TableCell::new_with_alignment(
+            Paint::green("Congrats! You are up to date!"),
+            2,
+            Alignment::Center,
+        )]));
+    } else {
+        table.add_row(Row::new(vec![
+            TableCell::new_with_alignment(Paint::green("#").bold().italic(), 1, Alignment::Center),
+            TableCell::new_with_alignment(
+                Paint::green("Title").bold().italic(),
+                1,
                 Alignment::Center,
-            )]);
-            table.add_row(Row::new(vec));
-            if total_task_count == 0 {
-                table.add_row(Row::new(vec![TableCell::new_with_alignment(
-                    Paint::green("Congrats! You are up to date!"),
-                    2,
+            ),
+            TableCell::new_with_alignment(
+                Paint::yellow("Status").bold().italic(),
+                1,
+                Alignment::Center,
+            ),
+        ]));
+        for (i, task) in tasks.iter().enumerate() {
+            table.add_row(Row::new(vec![
+                TableCell::new_with_alignment(Paint::green(i + 1), 1, Alignment::Center),
+                TableCell::new_with_alignment(Paint::green(&task.title), 1, Alignment::Center),
+                TableCell::new_with_alignment(
+                    if task.completed {
+                        Paint::green("✅ | Completed!").to_string()
+                    } else {
+                        Paint::red("❌ | Uncompleted!").to_string()
+                    },
+                    1,
                     Alignment::Center,
-                )]));
-            } else {
-                table.add_row(Row::new(vec![
-                    TableCell::new_with_alignment(
-                        Paint::green("#").bold().italic(),
-                        1,
-                        Alignment::Center,
-                    ),
-                    TableCell::new_with_alignment(
-                        Paint::green("Title").bold().italic(),
-                        1,
-                        Alignment::Center,
-                    ),
-                    TableCell::new_with_alignment(
-                        Paint::yellow("Status").bold().italic(),
-                        1,
-                        Alignment::Center,
-                    ),
-                ]));
-                for (i, task) in tasks.iter().enumerate() {
-                    table.add_row(Row::new(vec![
-                        TableCell::new_with_alignment(Paint::green(i + 1), 1, Alignment::Center),
-                        TableCell::new_with_alignment(
-                            Paint::green(&task.title),
-                            1,
-                            Alignment::Center,
-                        ),
-                        TableCell::new_with_alignment(func(task.completed), 1, Alignment::Center),
-                    ]));
-                }
-            }
-        },
-    );
+                ),
+            ]));
+        }
+    }
+
     println!("{}", table.render());
 }
 
@@ -347,20 +472,13 @@ impl Task {
         }
     }
 }
-fn func(o: bool) -> String {
-    if o {
-        Paint::green("✅ | Completed!").to_string()
-    } else {
-        Paint::red("❌ | Uncompleted!").to_string()
-    }
-}
 
 fn get_tasks(db: &PickleDb) -> Vec<Task> {
     db.get::<Vec<Task>>("tasks").unwrap_or_default()
 }
 
 fn create_dir() {
-    if let Some(dir) = ProjectDirs::from("com", "sigaloid", "please-rs") {
+    if let Some(dir) = ProjectDirs::from("com", "sigaloid", "please") {
         let cfg_dir = dir.config_dir();
         if !cfg_dir.exists() {
             DirBuilder::new().recursive(true).create(cfg_dir).ok();
@@ -369,28 +487,45 @@ fn create_dir() {
 }
 fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
     let timestamp_current = get_time().unix_timestamp();
-    let cache_weather = |db: &mut PickleDb| -> Option<String> {
+    let fetch_and_cache_weather = |db: &mut PickleDb| -> Option<String> {
         let city = db.get::<String>("weather-city").unwrap_or_default();
-        let get = ureq::get(&format!("https://wttr.in/{}?format=\"%l:+%C+%c+%t\"", city))
+        let get = ureq::get(&format!("https://wttr.in/{}?format=%l:+%C+%c+%t", city))
             .call()
-            .unwrap()
-            .into_string()
             .ok()?
-            .replace('"', "");
+            .into_string()
+            .ok()?;
         db.set("weather-cached", &get)
             .expect("Failed to set cached weather");
         db.set("weather-timestamp", &timestamp_current)
             .expect("Failed to set cached weather");
         Some(get)
     };
+
     if let Some(timestamp) = db.get::<i64>("weather-timestamp") {
-        if timestamp_current - timestamp > 3600 || !db.exists("weather-cached") || force_refresh {
-            cache_weather(db)
+        // if it's been more than 60 minutes since weather-timestamp (aka cache is old),
+        // OR if weather-cached doesn't exist (weather has never been cached),
+        // OR if force_refresh is set,
+        // fetch and cache weather
+        if force_refresh {
+            // println!("This process is forced");
+            fetch_and_cache_weather(db)
+        } else if timestamp_current - timestamp > 60 || !db.exists("weather-cached") {
+            // println!("Spawning new process");
+            drop(
+                std::process::Command::new("please")
+                    .arg("-r")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn(),
+            );
+            db.get::<String>("weather-cached")
         } else {
+            // else, simply load cached weather
+            // println!("Loading cached weather");
             db.get::<String>("weather-cached")
         }
     } else {
-        cache_weather(db)
+        fetch_and_cache_weather(db)
     }
 }
 pub(crate) fn get_time() -> OffsetDateTime {
