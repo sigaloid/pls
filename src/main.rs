@@ -72,7 +72,7 @@ fn main() {
             .expect("Failed to write name to database");
     }
 
-    // if weather has not been set, ask whether to display it.
+    // if weather has not been set, ask whether (ha) to display it.
     if !db.exists("weather") {
         let weather = casual::confirm(
             Paint::blue("Would you like to display the weather based on your IP location each time you open the terminal?")
@@ -80,7 +80,10 @@ fn main() {
         );
         db.set("weather", &weather)
             .expect("Failed to write weather to database");
-        if casual::confirm(Paint::cyan("Would you like to specify a location?").to_string()) {
+        if casual::confirm(
+            Paint::cyan("Would you like to save a more specific location (your exact city)?")
+                .to_string(),
+        ) {
             let city: String = casual::prompt(Paint::blue("Enter a city name: ").to_string()).get();
             db.set("weather-city", &city)
                 .expect("Failed to write city to database");
@@ -170,13 +173,7 @@ fn main() {
             } else {
                 let index = sub_matches
                     .get_one::<String>("INDEX")
-                    .map_or_else(
-                        || {
-                            println!("No index specified! Defaulting to first item...");
-                            0
-                        },
-                        |index| index.parse::<usize>().unwrap_or(0),
-                    )
+                    .map_or_else(|| 0, |index| index.parse::<usize>().unwrap_or(0))
                     .saturating_sub(1);
 
                 println!(
@@ -220,13 +217,7 @@ fn main() {
                 // use specified index or default to first
                 let index = sub_matches
                     .get_one::<String>("INDEX")
-                    .map_or_else(
-                        || {
-                            println!("No index specified! Defaulting to first item...");
-                            0
-                        },
-                        |index| index.parse::<usize>().unwrap_or(0),
-                    )
+                    .map_or_else(|| 0, |index| index.parse::<usize>().unwrap_or(0))
                     .saturating_sub(1);
 
                 println!(
@@ -261,13 +252,7 @@ fn main() {
                 // use specified index or default to first
                 let index = sub_matches
                     .get_one::<String>("INDEX")
-                    .map_or_else(
-                        || {
-                            println!("No index specified! Defaulting to first item...");
-                            0
-                        },
-                        |index| index.parse::<usize>().unwrap_or(0),
-                    )
+                    .map_or_else(|| 0, |index| index.parse::<usize>().unwrap_or(0))
                     .saturating_sub(1);
 
                 println!("Removing task {}...", Paint::yellow(index + 1));
@@ -502,15 +487,13 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
     };
 
     if let Some(timestamp) = db.get::<i64>("weather-timestamp") {
-        // if it's been more than 60 minutes since weather-timestamp (aka cache is old),
-        // OR if weather-cached doesn't exist (weather has never been cached),
-        // OR if force_refresh is set,
-        // fetch and cache weather
+        // if manually forcing a refresh
         if force_refresh {
-            // println!("This process is forced");
+            // force refresh and block thread when forced
             fetch_and_cache_weather(db)
-        } else if timestamp_current - timestamp > 60 || !db.exists("weather-cached") {
-            // println!("Spawning new process");
+        } else if timestamp_current - timestamp > 3600 || !db.exists("weather-cached") {
+            // if refresh isn't forced, but it is outdated or a cache doesn't exist,
+            // spawn new process to update in the background, so that the terminal isn't blocked by a weather update
             drop(
                 std::process::Command::new("please")
                     .arg("-r")
@@ -518,10 +501,14 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
                     .stderr(Stdio::null())
                     .spawn(),
             );
-            db.get::<String>("weather-cached")
+            // then report a cached version (and if there is none, just use an empty string. The next time it will contain actual weather)
+            Some(
+                db.get::<String>("weather-cached")
+                    .map(|s| format!("{} ({}m outdated)", s, (timestamp_current - timestamp) / 60))
+                    .unwrap_or_default(),
+            )
         } else {
-            // else, simply load cached weather
-            // println!("Loading cached weather");
+            // if the timestamp is not outdated simply load cached weather
             db.get::<String>("weather-cached")
         }
     } else {
