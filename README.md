@@ -51,8 +51,11 @@ PS: This asciinema cast shows the chart out of alignment on the right side, but 
 
 # Weather information
 Upon first launch you will be asked your name (for a greeting). Then you will be asked if you want to query for the weather data for your location.
+
 The weather is retrieved from [wttr.in](https://github.com/chubin/wttr.in) and by default it will geolocate your location automatically.
+
 To see what that looks like, click here: https://wttr.in/?format=%l:+%C+%c+%t
+
 Alternatively, if the geolocation is not accurate, you can manually specify a city. For example, if you live in New York, visit https://wttr.in/new-york and verify that the coordinates are correct (some smaller cities may not exist in wttr.in's database). If the coordinates are correct, answer yes to "Would you like to save a more specific location (your exact city)?".
 
 ---
@@ -69,7 +72,7 @@ crontab -l | { cat; echo \"0 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort
 # Benchmark
 
 `pls` is significantly faster than `please` (one might even say blazingly fast). 
-
+```
 Benchmark 1: pls
   Time (mean ± σ):       3.1 ms ±   1.2 ms    [User: 1.3 ms, System: 1.8 ms]
   Range (min … max):     0.4 ms …  10.1 ms    5000 runs
@@ -84,5 +87,5 @@ Benchmark 2: please
 Summary
   'pls' ran
    43.51 ± 17.30 times faster than 'please'
-
+```
 In summary, pls takes roughly 3ms to launch, and please takes roughly 134ms (unfortunately a noticeable delay).
