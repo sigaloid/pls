@@ -1,6 +1,8 @@
 use pickledb::PickleDb;
 
-static QUOTES: [&str; 501] = [
+const QUOTE_COUNT: usize = 501;
+
+static QUOTES: [&str; QUOTE_COUNT] = [
     "Beware of missing chances; otherwise it may be altogether too late some day. ~ Franz Liszt",
     "The way we communicate with others and with ourselves ultimately determines the quality of our lives. ~ Tony Robbins",
     "No alibi will save you from accepting the responsibility. ~ Napoleon Hill",
@@ -506,7 +508,7 @@ static QUOTES: [&str; 501] = [
 
 pub fn get_quote(db: &mut PickleDb) -> String {
     if let Some(quote) = db.get::<usize>("quote") {
-        if let 0..=998 = quote {
+        if let 0..=QUOTE_COUNT = quote {
             let new_quote = quote + 1;
             let _set = db.set("quote", &new_quote);
             QUOTES[new_quote].to_string()
