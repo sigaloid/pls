@@ -78,13 +78,16 @@ fn main() {
             Paint::blue("Would you like to display the weather based on your IP location each time you open the terminal?")
                 .to_string(),
         );
+        // set weather key to location
         db.set("weather", &weather)
             .expect("Failed to write weather to database");
+        // ask for more specific location
         if casual::confirm(
             Paint::cyan("Would you like to save a more specific location (your exact city)?")
                 .to_string(),
         ) {
             let city: String = casual::prompt(Paint::blue("Enter a city name: ").to_string()).get();
+            // set more specific location
             db.set("weather-city", &city)
                 .expect("Failed to write city to database");
         }
@@ -142,8 +145,11 @@ fn main() {
             .action(ArgAction::SetTrue),
         )
         .get_matches();
+    // bool that represents whether the command should apply changes to all tasks
     let all = *matches.get_one::<bool>("all").unwrap_or(&false);
+    // bool that represents whether the weather should be refreshed
     let force_refresh = *matches.get_one::<bool>("refresh").unwrap_or(&false);
+    // match each subcommand
     match matches.subcommand() {
         Some(("add", sub_matches)) => {
             // if name of task is set, add task to list
@@ -228,6 +234,7 @@ fn main() {
                 let mut tasks = get_tasks(&db);
                 match tasks.get_mut(index) {
                     Some(task_mut) => {
+                        // set task as completed and replace it in task list
                         let mut task = task_mut.clone();
                         task.completed = false;
                         let _replace = std::mem::replace(&mut tasks[index], task);
@@ -274,6 +281,7 @@ fn main() {
             print_tasks(&mut db, false, force_refresh);
         }
         Some(("install", sub_matches)) => {
+            // code to manage installing to shell
             if cfg!(unix) {
                 let command = |cmd: &str, shell_install: bool| {
                     println!("Now running command: {}", cmd);
@@ -317,6 +325,7 @@ fn main() {
             }
         }
         Some(("clean", _)) => {
+            // remove all completed tasks
             println!("{}", Paint::blue("Clearing all completed tasks"));
             let tasks = get_tasks(&db);
             let prior_len = tasks.len();
@@ -333,9 +342,11 @@ fn main() {
             print_tasks(&mut db, false, force_refresh);
         }
         Some(("list", _)) => {
+            // list all tasks without full greeting
             print_tasks(&mut db, false, force_refresh);
         }
         _ => {
+            // list all tasks with full greeting
             print_tasks(&mut db, true, force_refresh);
         }
     }
@@ -378,10 +389,9 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
         );
 
         let quote = quotes::get_quote(db);
-        println!("{}", Paint::yellow(quote));
-        println!();
-        println!("{}", Paint::green(full_greeting));
-        println!();
+        println!("{}\n", Paint::yellow(quote));
+        println!("{}\n", Paint::green(full_greeting));
+        // if weather is enabled
         if db.get::<bool>("weather").unwrap_or_default() {
             get_weather(db, force_refresh).map_or_else(
                 || println!("{}", Paint::red("Failed to fetch weather :(")),
@@ -478,7 +488,9 @@ fn create_dir() {
     }
 }
 fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
+    // represent current unix timestamp
     let timestamp_current = get_time().unix_timestamp();
+    // closure that fetches the weather and caches it.
     let fetch_and_cache_weather = |db: &mut PickleDb| -> Option<String> {
         let city = db.get::<String>("weather-city").unwrap_or_default();
         let get = ureq::get(&format!("https://wttr.in/{}?format=%l:+%C+%c+%t", city))
@@ -492,7 +504,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             .expect("Failed to set cached weather");
         Some(get)
     };
-
+    // if weather-timestamp is set (ie previous cache success)
     if let Some(timestamp) = db.get::<i64>("weather-timestamp") {
         // if manually forcing a refresh
         if force_refresh {
@@ -519,6 +531,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             db.get::<String>("weather-cached")
         }
     } else {
+        // if no previous cached version, simply load weather
         fetch_and_cache_weather(db)
     }
 }
