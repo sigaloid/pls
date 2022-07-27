@@ -31,6 +31,7 @@ use clap::{arg, ArgAction, Command};
 use directories_next::ProjectDirs;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use serde::{Deserialize, Serialize};
+use spinach::{term, Spinach};
 use tegen::tegen::TextGenerator;
 use term_table::{
     row::Row,
@@ -39,17 +40,27 @@ use term_table::{
 };
 
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
+use ureq::Response;
 use yansi::Paint;
 mod quotes;
 
 fn main() {
+    // https://github.com/etienne-napoleone/spinach#how-to-avoid-leaving-terminal-without-prompt-on-interupt-ctrlc
+    ctrlc::set_handler(|| {
+        term::show_cursor();
+        std::process::exit(0);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     // create config directory
     create_dir();
+
     // create path to config file
     let path = ProjectDirs::from("com", "sigaloid", "pls")
         .expect("Failed to create ProjectDirs!")
         .config_dir()
         .join("pls.json");
+
     // create database
     let mut db = PickleDb::load_or_new(
         path,
@@ -81,15 +92,33 @@ fn main() {
         // set weather key to location
         db.set("weather", &weather)
             .expect("Failed to write weather to database");
-        // ask for more specific location
-        if casual::confirm(
-            Paint::cyan("Would you like to save a more specific location (your exact city)?")
+        // if user requested to check basic weather, ask if they want to add a specific location
+        if weather {
+            let s = Spinach::new("Checking your weather...");
+            let current_location = ureq::get("https://wttr.in/?format=%l")
+                .call()
+                .ok()
+                .unwrap_or(Response::new(301, "", "").unwrap())
+                .into_string()
+                .unwrap_or_default();
+            s.stop();
+            println!(
+                "Your estimated location is: {}. If this is incorrect, you can save a more specific location now.",
+                Paint::yellow(current_location)
+            );
+            if casual::confirm(
+                Paint::cyan(
+                    "Would you like to save a more specific location (ex: your exact specific-location)?",
+                )
                 .to_string(),
-        ) {
-            let city: String = casual::prompt(Paint::blue("Enter a city name: ").to_string()).get();
-            // set more specific location
-            db.set("weather-city", &city)
-                .expect("Failed to write city to database");
+            ) {
+                let specific_location: String =
+                    casual::prompt(Paint::blue("Enter a more specific location: ").to_string())
+                        .get();
+                // set more specific location
+                db.set("weather-specific-location", &specific_location)
+                    .expect("Failed to write specific-location to database");
+            }
         }
     }
     let matches = clap::Command::new("pls").version("0.1.0")
@@ -495,16 +524,36 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
         // if specific location is not set, the default for `String` will be used (an empty string).
         // thus the request will be to "https://wttr.in/?format=%l:+%C+%c+%t" which is the URL structure
         // for letting the server geolocate based on IP address.
-        let city = db.get::<String>("weather-city").unwrap_or_default();
-        let get = ureq::get(&format!("https://wttr.in/{}?format=%l:+%C+%c+%t", city))
-            .call()
-            .ok()?
-            .into_string()
-            .ok()?;
+        let s = Spinach::new("Getting weather location from database...");
+
+        let specific_location = db
+            .get::<String>("weather-specific-location")
+            .unwrap_or_default();
+
+        s.text(format!(
+            "Getting weather for {} from weather service...",
+            specific_location
+        ));
+
+        let get = ureq::get(&format!(
+            "https://wttr.in/{}?format=%l:+%C+%c+%t",
+            specific_location
+        ))
+        .call()
+        .ok()?
+        .into_string()
+        .ok()?;
+
+        s.text("Caching weather...");
+
         db.set("weather-cached", &get)
             .expect("Failed to set cached weather");
+
+        s.text("Caching weather timestamp...");
+
         db.set("weather-timestamp", &timestamp_current)
             .expect("Failed to set cached weather");
+
         Some(get)
     };
     // if weather-timestamp is set (ie previous cache success)
