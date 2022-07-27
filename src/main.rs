@@ -492,6 +492,9 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
     let timestamp_current = get_time().unix_timestamp();
     // closure that fetches the weather and caches it.
     let fetch_and_cache_weather = |db: &mut PickleDb| -> Option<String> {
+        // if specific location is not set, the default for `String` will be used (an empty string).
+        // thus the request will be to "https://wttr.in/?format=%l:+%C+%c+%t" which is the URL structure
+        // for letting the server geolocate based on IP address.
         let city = db.get::<String>("weather-city").unwrap_or_default();
         let get = ureq::get(&format!("https://wttr.in/{}?format=%l:+%C+%c+%t", city))
             .call()
@@ -523,7 +526,13 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             // then report a cached version (and if there is none, just use an empty string. The next time it will contain actual weather)
             Some(
                 db.get::<String>("weather-cached")
-                    .map(|s| format!("{} ({}m outdated)", s, (timestamp_current - timestamp) / 60))
+                    .map(|s| {
+                        format!(
+                            "{} ({} min outdated, will be updated on next launch)",
+                            s,
+                            (timestamp_current - timestamp) / 60
+                        )
+                    })
                     .unwrap_or_default(),
             )
         } else {
