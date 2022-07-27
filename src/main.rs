@@ -98,7 +98,7 @@ fn main() {
             let current_location = ureq::get("https://wttr.in/?format=%l")
                 .call()
                 .ok()
-                .unwrap_or(Response::new(301, "", "").unwrap())
+                .unwrap_or_else(|| Response::new(301, "", "").unwrap())
                 .into_string()
                 .unwrap_or_default();
             s.succeed("Weather retrieved");
