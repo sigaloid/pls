@@ -101,14 +101,14 @@ fn main() {
                 .unwrap_or(Response::new(301, "", "").unwrap())
                 .into_string()
                 .unwrap_or_default();
-            s.stop();
+            s.succeed("Weather retrieved");
             println!(
                 "Your estimated location is: {}. If this is incorrect, you can save a more specific location now.",
                 Paint::yellow(current_location)
             );
             if casual::confirm(
                 Paint::cyan(
-                    "Would you like to save a more specific location (ex: your exact specific-location)?",
+                    "Would you like to save a more specific location (ex: your exact city)?",
                 )
                 .to_string(),
             ) {
@@ -425,8 +425,7 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
             get_weather(db, force_refresh).map_or_else(
                 || println!("{}", Paint::red("Failed to fetch weather :(")),
                 |weather| {
-                    println!("{}", Paint::blue(weather));
-                    println!();
+                    println!("{}\n", Paint::blue(weather));
                 },
             );
         }
@@ -554,6 +553,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
         db.set("weather-timestamp", &timestamp_current)
             .expect("Failed to set cached weather");
 
+        s.succeed("Weather retrieved");
         Some(get)
     };
     // if weather-timestamp is set (ie previous cache success)
