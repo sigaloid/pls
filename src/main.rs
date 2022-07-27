@@ -25,20 +25,19 @@
 )]
 #![allow(clippy::cognitive_complexity)]
 #![allow(clippy::too_many_lines)]
-use std::{fs::DirBuilder, process::Stdio, str::from_utf8};
 
 use clap::{arg, ArgAction, Command};
 use directories_next::ProjectDirs;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use serde::{Deserialize, Serialize};
 use spinach::{term, Spinach};
+use std::{fs::DirBuilder, process::Stdio, str::from_utf8};
 use tegen::tegen::TextGenerator;
 use term_table::{
     row::Row,
     table_cell::{Alignment, TableCell},
     TableStyle,
 };
-
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
 use ureq::Response;
 use yansi::Paint;
@@ -95,6 +94,7 @@ fn main() {
         // if user requested to check basic weather, ask if they want to add a specific location
         if weather {
             let s = Spinach::new("Checking your weather...");
+            // format weather as *just* the location
             let current_location = ureq::get("https://wttr.in/?format=%l")
                 .call()
                 .ok()
@@ -181,15 +181,17 @@ fn main() {
     // match each subcommand
     match matches.subcommand() {
         Some(("add", sub_matches)) => {
-            // if name of task is set, add task to list
-            if let Some(name) = sub_matches.get_one::<String>("NAME") {
-                println!("Adding task {} to list...", Paint::yellow(name));
-                // get copy of tasks, add new task, and save to database
-                let mut tasks = get_tasks(&db);
-                tasks.push(Task::new(name));
-                db.set("tasks", &tasks).expect("Failed to set tasks");
-                print_tasks(&mut db, false, force_refresh);
-            }
+            // if name of task is set, add task to list; if not, prompt user
+            let task = sub_matches.get_one::<String>("NAME").map_or_else(
+                || casual::prompt("Enter task: ").get(),
+                std::borrow::ToOwned::to_owned,
+            );
+            println!("Adding task {} to list...", Paint::yellow(&task));
+            // get copy of tasks, add new task, and save to database
+            let mut tasks = get_tasks(&db);
+            tasks.push(Task::new(&task));
+            db.set("tasks", &tasks).expect("Failed to set tasks");
+            print_tasks(&mut db, false, force_refresh);
         }
         Some(("do", sub_matches)) => {
             // use specified index or default to first
@@ -385,7 +387,6 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
     println!();
     let mut table = term_table::Table::new();
     table.style = TableStyle::extended();
-    // table.max_column_width = 80;
     if full_greet {
         let time = get_time();
         let time_greeting = match time.hour() {
@@ -534,7 +535,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             specific_location
         ));
 
-        let get = ureq::get(&format!(
+        let weather_info = ureq::get(&format!(
             "https://wttr.in/{}?format=%l:+%C+%c+%t",
             specific_location
         ))
@@ -545,7 +546,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
 
         s.text("Caching weather...");
 
-        db.set("weather-cached", &get)
+        db.set("weather-cached", &weather_info)
             .expect("Failed to set cached weather");
 
         s.text("Caching weather timestamp...");
@@ -554,7 +555,7 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             .expect("Failed to set cached weather");
 
         s.succeed("Weather retrieved");
-        Some(get)
+        Some(weather_info)
     };
     // if weather-timestamp is set (ie previous cache success)
     if let Some(timestamp) = db.get::<i64>("weather-timestamp") {
@@ -563,8 +564,9 @@ fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
             // force refresh and block thread when forced
             fetch_and_cache_weather(db)
         } else if timestamp_current - timestamp > 3600 || !db.exists("weather-cached") {
-            // if refresh isn't forced, but it is outdated or a cache doesn't exist,
-            // spawn new process to update in the background, so that the terminal isn't blocked by a weather update
+            // if refresh isn't forced, but it is outdated or a cache doesn't exist, spawn new
+            // process to update in the background, so that the terminal isn't blocked by a weather
+            // update, but when the user next uses `pls`, they will receive up-to-date weather.
             drop(
                 std::process::Command::new("pls")
                     .arg("-r")

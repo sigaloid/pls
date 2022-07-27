@@ -508,7 +508,7 @@ static QUOTES: [&str; QUOTE_COUNT] = [
 
 pub fn get_quote(db: &mut PickleDb) -> String {
     if let Some(quote) = db.get::<usize>("quote") {
-        if let 0..=QUOTE_COUNT = quote {
+        if (0..=QUOTE_COUNT).contains(&quote) {
             let new_quote = quote + 1;
             let _set = db.set("quote", &new_quote);
             QUOTES[new_quote].to_string()
