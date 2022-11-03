@@ -522,19 +522,3 @@ pub fn get_quote(db: &mut PickleDb) -> String {
         QUOTES[0].to_string()
     }
 }
-
-#[cfg(test)]
-use sealed_test::prelude::*;
-
-#[test]
-#[sealed_test]
-fn test_quotes() {
-    let mut db = PickleDb::load_or_new(
-        "test",
-        pickledb::PickleDbDumpPolicy::AutoDump,
-        pickledb::SerializationMethod::Json,
-    );
-    for i in 0..1000 {
-        println!("{i}: {}", get_quote(&mut db));
-    }
-}

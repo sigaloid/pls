@@ -31,7 +31,7 @@ use directories_next::ProjectDirs;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use serde::{Deserialize, Serialize};
 use spinach::{term, Spinach};
-use std::{fs::DirBuilder, process::Stdio, str::from_utf8};
+use std::{fs::DirBuilder, str::from_utf8};
 use tegen::tegen::TextGenerator;
 use term_table::{
     row::Row,
@@ -41,8 +41,11 @@ use term_table::{
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
 use ureq::Response;
 use yansi::Paint;
-mod quotes;
 
+use crate::weather::get_weather;
+mod quotes;
+mod tests;
+mod weather;
 fn main() {
     // https://github.com/etienne-napoleone/spinach#how-to-avoid-leaving-terminal-without-prompt-on-interupt-ctrlc
     ctrlc::set_handler(|| {
@@ -200,7 +203,7 @@ fn main() {
                 // get copy of tasks, mark as completed, replace task in task list
                 let new_tasks = get_tasks(&db)
                     .into_iter()
-                    .map(make_complete)
+                    .map(|x| make_complete(&x))
                     .collect::<Vec<Task>>();
 
                 // save task list to database
@@ -487,7 +490,7 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
     println!("{}", table.render());
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, Debug)]
 struct Task {
     title: String,
     completed: bool,
@@ -511,7 +514,7 @@ impl Task {
     }
 }
 
-fn make_complete(task: Task) -> Task {
+fn make_complete(task: &Task) -> Task {
     task.make_complete()
 }
 
@@ -525,85 +528,6 @@ fn create_dir() {
         if !cfg_dir.exists() {
             DirBuilder::new().recursive(true).create(cfg_dir).ok();
         }
-    }
-}
-fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Option<String> {
-    // represent current unix timestamp
-    let timestamp_current = get_time().unix_timestamp();
-    // closure that fetches the weather and caches it.
-    let fetch_and_cache_weather = |db: &mut PickleDb| -> Option<String> {
-        // if specific location is not set, the default for `String` will be used (an empty string).
-        // thus the request will be to "https://wttr.in/?format=%l:+%C+%c+%t" which is the URL structure
-        // for letting the server geolocate based on IP address.
-        let s = Spinach::new("Getting weather location from database...");
-
-        let specific_location = db
-            .get::<String>("weather-specific-location")
-            .unwrap_or_default();
-
-        s.text(format!(
-            "Getting weather for {} from weather service...",
-            specific_location
-        ));
-
-        let weather_info = ureq::get(&format!(
-            "https://wttr.in/{}?format=%l:+%C+%c+%t",
-            specific_location
-        ))
-        .call()
-        .ok()?
-        .into_string()
-        .ok()?;
-
-        s.text("Caching weather...");
-
-        db.set("weather-cached", &weather_info)
-            .expect("Failed to set cached weather");
-
-        s.text("Caching weather timestamp...");
-
-        db.set("weather-timestamp", &timestamp_current)
-            .expect("Failed to set cached weather");
-
-        s.succeed("Weather retrieved");
-        Some(weather_info)
-    };
-    // if weather-timestamp is set (ie previous cache success)
-    if let Some(timestamp) = db.get::<i64>("weather-timestamp") {
-        // if manually forcing a refresh
-        if force_refresh {
-            // force refresh and block thread when forced
-            fetch_and_cache_weather(db)
-        } else if timestamp_current - timestamp > 3600 || !db.exists("weather-cached") {
-            // if refresh isn't forced, but it is outdated or a cache doesn't exist, spawn new
-            // process to update in the background, so that the terminal isn't blocked by a weather
-            // update, but when the user next uses `pls`, they will receive up-to-date weather.
-            drop(
-                std::process::Command::new("pls")
-                    .arg("-r")
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn(),
-            );
-            // then report a cached version (and if there is none, just use an empty string. The next time it will contain actual weather)
-            Some(
-                db.get::<String>("weather-cached")
-                    .map(|s| {
-                        format!(
-                            "{} ({} min outdated, will be updated on next launch)",
-                            s,
-                            (timestamp_current - timestamp) / 60
-                        )
-                    })
-                    .unwrap_or_default(),
-            )
-        } else {
-            // if the timestamp is not outdated simply load cached weather
-            db.get::<String>("weather-cached")
-        }
-    } else {
-        // if no previous cached version, simply load weather
-        fetch_and_cache_weather(db)
     }
 }
 pub(crate) fn get_time() -> OffsetDateTime {
