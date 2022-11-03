@@ -198,13 +198,11 @@ fn main() {
             if all {
                 println!("{}", Paint::red("Marking all tasks as done..."));
                 // get copy of tasks, mark as completed, replace task in task list
-                let tasks = get_tasks(&db);
-                let mut new_tasks = Vec::new();
-                for task in tasks {
-                    let mut new_task = task.clone();
-                    new_task.completed = true;
-                    new_tasks.push(new_task);
-                }
+                let new_tasks = get_tasks(&db)
+                    .into_iter()
+                    .map(make_complete)
+                    .collect::<Vec<Task>>();
+
                 // save task list to database
                 db.set("tasks", &new_tasks).expect("Failed to set tasks");
             } else {
@@ -489,7 +487,7 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
     println!("{}", table.render());
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct Task {
     title: String,
     completed: bool,
@@ -499,9 +497,22 @@ impl Task {
     fn new(title: &String) -> Self {
         Self {
             title: title.to_string(),
-            completed: false,
+            ..Default::default()
         }
     }
+    fn new_completed(title: &String) -> Self {
+        Self {
+            title: title.to_string(),
+            completed: true,
+        }
+    }
+    fn make_complete(&self) -> Self {
+        Self::new_completed(&self.title)
+    }
+}
+
+fn make_complete(task: Task) -> Task {
+    task.make_complete()
 }
 
 fn get_tasks(db: &PickleDb) -> Vec<Task> {
