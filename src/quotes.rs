@@ -508,7 +508,7 @@ static QUOTES: [&str; QUOTE_COUNT] = [
 
 pub fn get_quote(db: &mut PickleDb) -> String {
     if let Some(quote) = db.get::<usize>("quote") {
-        if (0..=QUOTE_COUNT).contains(&quote) {
+        if (0..QUOTE_COUNT - 1).contains(&quote) {
             let new_quote = quote + 1;
             let _set = db.set("quote", &new_quote);
             QUOTES[new_quote].to_string()
@@ -520,5 +520,21 @@ pub fn get_quote(db: &mut PickleDb) -> String {
     } else {
         let _set = db.set("quote", &0);
         QUOTES[0].to_string()
+    }
+}
+
+#[cfg(test)]
+use sealed_test::prelude::*;
+
+#[test]
+#[sealed_test]
+fn test_quotes() {
+    let mut db = PickleDb::load_or_new(
+        "test",
+        pickledb::PickleDbDumpPolicy::AutoDump,
+        pickledb::SerializationMethod::Json,
+    );
+    for i in 0..1000 {
+        println!("{i}: {}", get_quote(&mut db));
     }
 }
