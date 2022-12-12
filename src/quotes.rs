@@ -507,15 +507,13 @@ static QUOTES: [&str; QUOTE_COUNT] = [
 ];
 
 pub fn get_quote(db: &mut PickleDb) -> String {
-    if let Some(quote) = db.get::<usize>("quote") {
-        if (0..QUOTE_COUNT - 1).contains(&quote) {
-            let new_quote = quote + 1;
-            let _set = db.set("quote", &new_quote);
-            QUOTES[new_quote].to_string()
+    if let Some(current_quote_count) = db.get::<usize>("quote") {
+        if let Some(quote) = QUOTES.get(&current_quote_count + 1) {
+            let _set = db.set("quote", &(current_quote_count + 1));
+            (*quote).to_string()
         } else {
-            let new_quote = 0;
-            let _set = db.set("quote", &new_quote);
-            QUOTES[new_quote].to_string()
+            let _set = db.set("quote", &0);
+            QUOTES[0].to_string()
         }
     } else {
         let _set = db.set("quote", &0);
