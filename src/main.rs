@@ -1,7 +1,6 @@
 #![deny(
     anonymous_parameters,
     clippy::all,
-    const_err,
     illegal_floating_point_literal_pattern,
     late_bound_lifetime_arguments,
     path_statements,
@@ -28,17 +27,18 @@
 
 use clap::{arg, ArgAction, Command};
 use directories_next::ProjectDirs;
+use native_tls::TlsConnector;
 use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use serde::{Deserialize, Serialize};
 use spinach::{term, Spinach};
-use std::{fs::DirBuilder, str::from_utf8};
+use std::{fs::DirBuilder, str::from_utf8, sync::Arc};
 use tegen::tegen::TextGenerator;
 use term_table::{
     row::Row,
     table_cell::{Alignment, TableCell},
     TableStyle,
 };
-use time::{format_description::well_known::Rfc2822, OffsetDateTime};
+use time::{macros::format_description, OffsetDateTime};
 use ureq::Response;
 use yansi::Paint;
 
@@ -68,7 +68,8 @@ fn main() {
         path,
         PickleDbDumpPolicy::AutoDump,
         SerializationMethod::Json,
-    );
+    )
+    .expect("Failed to create database!");
 
     // if name has not been set, ask for name and save it
     if !db.exists("name") {
@@ -76,7 +77,7 @@ fn main() {
             casual::prompt(Paint::blue("Hello! What can I call you?: ").to_string()).get();
         println!(
             "{}",
-            Paint::green(format!(
+            Paint::green(&format!(
                 "Nice to meet you, {}! I'll write that down and make sure I don't forget it.",
                 name
             ))
@@ -98,7 +99,9 @@ fn main() {
         if weather {
             let s = Spinach::new("Checking your weather...");
             // format weather as *just* the location
-            let current_location = ureq::get("https://wttr.in/?format=%l")
+            let connector = TlsConnector::new().unwrap();
+            let agent = ureq::AgentBuilder::new().tls_connector(Arc::new(connector)).build();
+            let current_location = agent.get("https://wttr.in/?format=%l")
                 .call()
                 .ok()
                 .unwrap_or_else(|| Response::new(301, "", "").unwrap())
@@ -107,7 +110,7 @@ fn main() {
             s.succeed("Weather retrieved");
             println!(
                 "Your estimated location is: {}. If this is incorrect, you can save a more specific location now.",
-                Paint::yellow(current_location)
+                Paint::yellow(&current_location)
             );
             if casual::confirm(
                 Paint::cyan(
@@ -216,7 +219,7 @@ fn main() {
 
                 println!(
                     "Marking task {} from list as done...",
-                    Paint::yellow(index + 1)
+                    Paint::yellow(&(index + 1))
                 );
                 // get copy of tasks, mark as completed, replace task in task list
                 let mut tasks = get_tasks(&db);
@@ -260,7 +263,7 @@ fn main() {
 
                 println!(
                     "Marking task {} from list as undone...",
-                    Paint::yellow(index + 1)
+                    Paint::yellow(&(index + 1))
                 );
                 // get copy of tasks, mark as uncompleted, replace task in task list
                 let mut tasks = get_tasks(&db);
@@ -294,7 +297,7 @@ fn main() {
                     .map_or_else(|| 0, |index| index.parse::<usize>().unwrap_or(0))
                     .saturating_sub(1);
 
-                println!("Removing task {}...", Paint::yellow(index + 1));
+                println!("Removing task {}...", Paint::yellow(&(index + 1)));
                 // get copy of tasks, delete from list
                 let mut tasks = get_tasks(&db);
                 if tasks.get(index).is_some() {
@@ -344,10 +347,13 @@ fn main() {
                         "fish" => install("~/.config/fish/config.fish"),
                         "bash" => install("~/.bashrc"),
                         "zsh" => install("~/.zshrc"),
-                        // if user specified weather, add a weather refresh to the crontab so that it refreshes the weather 
-                        // every 60 minutes and on boot. this ensures that the user never waits for their terminal.
+                        // if user specified weather, add a weather refresh to
+                        // the crontab so that it refreshes the weather every
+                        // 15 minutes and on boot. this ensures that the user 
+                        // never waits for their terminal and always has updated
+                        // weather
                         "weather" => command(
-                            "crontab -l | { cat; echo \"0 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort | uniq | crontab -",false
+                            "crontab -l | { cat; echo \"*/15 * * * * pls -r\"; echo \"@reboot pls -r\"; } | sort | uniq | crontab -",false
                         ),
                         _ => println!("Must be fish, bash, zsh, or weather (to install the weather background update service)!"),
                     }
@@ -369,7 +375,7 @@ fn main() {
                 .expect("Failed to set tasks");
             println!(
                 "Cleaned {} completed tasks!",
-                Paint::green(prior_len - cleaned_tasks.len())
+                Paint::green(&(prior_len - cleaned_tasks.len()))
             );
             print_tasks(&mut db, false, force_refresh);
         }
@@ -399,13 +405,16 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
 
         let greeting_gen = TextGenerator::new()
             .generate("{Hello|Howdy|Greetings|What's up|Salutations|Greetings}");
+        let format = format_description!(
+            "[hour repr:12]:[minute], [weekday repr:short], [day] [month] [year]"
+        );
         let full_greeting = db.get::<String>("name").map_or_else(
             || {
                 format!(
                     "{}, {}! It is {}",
                     greeting_gen,
                     time_greeting,
-                    time.format(&Rfc2822).unwrap_or_else(|_| time.to_string())
+                    time.format(&format).unwrap()
                 )
             },
             |name| {
@@ -414,20 +423,20 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
                     greeting_gen,
                     time_greeting,
                     name,
-                    time.format(&Rfc2822).unwrap_or_else(|_| time.to_string())
+                    time.format(&format).unwrap_or_else(|_| time.to_string())
                 )
             },
         );
 
         let quote = quotes::get_quote(db);
-        println!("{}\n", Paint::yellow(quote));
-        println!("{}\n", Paint::green(full_greeting));
+        println!("{}\n", Paint::yellow(&quote));
+        println!("{}\n", Paint::green(&full_greeting));
         // if weather is enabled
         if db.get::<bool>("weather").unwrap_or_default() {
             get_weather(db, force_refresh).map_or_else(
-                || println!("{}", Paint::red("Failed to fetch weather :(")),
+                |e| println!("{} - {e}", Paint::red(" Failed to fetch weather :(")),
                 |weather| {
-                    println!("{}\n", Paint::blue(weather));
+                    println!("{}\n", Paint::blue(&weather));
                 },
             );
         }
@@ -443,8 +452,8 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
     vec.extend(vec![TableCell::new_with_alignment(
         format!(
             "You have {} pending tasks and {} completed tasks!",
-            Paint::red(task_pending_count),
-            Paint::green(task_completed_count)
+            Paint::red(&task_pending_count),
+            Paint::green(&task_completed_count)
         ),
         2,
         Alignment::Center,
@@ -472,7 +481,7 @@ fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
         ]));
         for (i, task) in tasks.iter().enumerate() {
             table.add_row(Row::new(vec![
-                TableCell::new_with_alignment(Paint::green(i + 1), 1, Alignment::Center),
+                TableCell::new_with_alignment(Paint::green(&(i + 1)), 1, Alignment::Center),
                 TableCell::new_with_alignment(Paint::green(&task.title), 1, Alignment::Center),
                 TableCell::new_with_alignment(
                     if task.completed {

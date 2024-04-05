@@ -10,7 +10,9 @@ fn test_quotes_and_weather() {
         "test",
         pickledb::PickleDbDumpPolicy::NeverDump,
         pickledb::SerializationMethod::Json,
-    );
+    )
+    .expect("failed to create db");
+
     println!("{:?}", get_weather(&mut db, true));
 
     for i in 0..5000 {
@@ -26,7 +28,9 @@ fn test_tasks() {
         "test",
         pickledb::PickleDbDumpPolicy::NeverDump,
         pickledb::SerializationMethod::Json,
-    );
+    )
+    .expect("failed to create db");
+
     assert!(get_tasks(&db).is_empty());
     let tasks = vec![Task::new(&"task".into())];
 
