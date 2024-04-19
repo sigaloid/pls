@@ -178,12 +178,18 @@ fn main() {
                 -a --all "Apply change to all tasks"
               )
             .action(ArgAction::SetTrue),
+        ).arg(
+            arg!(
+                -w --weather "Just print the weather!"
+            ).action(ArgAction::SetTrue)
         )
         .get_matches();
     // bool that represents whether the command should apply changes to all tasks
     let all = *matches.get_one::<bool>("all").unwrap_or(&false);
     // bool that represents whether the weather should be refreshed
     let force_refresh = *matches.get_one::<bool>("refresh").unwrap_or(&false);
+    // bool that represents just the weather to be printed
+    let weather = *matches.get_one::<bool>("weather").unwrap_or(&false);
     // match each subcommand
     match matches.subcommand() {
         Some(("add", sub_matches)) => {
@@ -197,7 +203,7 @@ fn main() {
             let mut tasks = get_tasks(&db);
             tasks.push(Task::new(&task));
             db.set("tasks", &tasks).expect("Failed to set tasks");
-            print_tasks(&mut db, false, force_refresh);
+            print_tasks(&mut db, false, force_refresh, false);
         }
         Some(("do", sub_matches)) => {
             // use specified index or default to first
@@ -239,7 +245,7 @@ fn main() {
                 // save task list to database
                 db.set("tasks", &tasks).expect("Failed to set tasks");
             }
-            print_tasks(&mut db, false, force_refresh);
+            print_tasks(&mut db, false, force_refresh, false);
         }
         Some(("undo", sub_matches)) => {
             if all {
@@ -284,7 +290,7 @@ fn main() {
                 // save task list to database
                 db.set("tasks", &tasks).expect("Failed to set tasks");
             }
-            print_tasks(&mut db, false, force_refresh);
+            print_tasks(&mut db, false, force_refresh, false);
         }
         Some(("rm", sub_matches)) => {
             if all {
@@ -313,7 +319,7 @@ fn main() {
                 // save task list to database
                 db.set("tasks", &tasks).expect("Failed to set tasks");
             }
-            print_tasks(&mut db, false, force_refresh);
+            print_tasks(&mut db, false, force_refresh, false);
         }
         Some(("install", sub_matches)) => {
             // code to manage installing to shell
@@ -377,21 +383,27 @@ fn main() {
                 "Cleaned {} completed tasks!",
                 Paint::green(&(prior_len - cleaned_tasks.len()))
             );
-            print_tasks(&mut db, false, force_refresh);
+            print_tasks(&mut db, false, force_refresh, false);
         }
         Some(("list", _)) => {
             // list all tasks without full greeting
-            print_tasks(&mut db, false, force_refresh);
+            print_tasks(&mut db, false, force_refresh, false);
         }
         _ => {
             // list all tasks with full greeting
-            print_tasks(&mut db, true, force_refresh);
+            print_tasks(&mut db, true, force_refresh, weather);
         }
     }
 }
 
-fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool) {
+fn print_tasks(db: &mut PickleDb, full_greet: bool, force_refresh: bool, just_weather: bool) {
     println!();
+    // If just weather
+    if just_weather {
+        let weather = get_weather(db, force_refresh).unwrap_or_default();
+        println!("{}", &weather);
+        return;
+    }
     let mut table = term_table::Table::new();
     table.style = TableStyle::extended();
     if full_greet {
