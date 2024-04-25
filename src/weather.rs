@@ -31,7 +31,7 @@ pub(crate) fn get_weather(db: &mut PickleDb, force_refresh: bool) -> Result<Stri
 
         let weather_info = agent
             .get(&format!(
-                "https://wttr.in/{}?format=+%C+%c+%t+feels+like+%f+Rainfall:+%p",
+                "https://wttr.in/{}?u&qqformat=+%C+%c+%t+feels+like+%f+Rainfall:+%p",
                 specific_location
             ))
             .timeout(Duration::from_secs(10))
